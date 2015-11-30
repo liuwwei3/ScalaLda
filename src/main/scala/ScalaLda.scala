@@ -9,12 +9,13 @@ object ScalaLda{
     
 
     //configs
-    val MAX_ITR = 20
-    val E_CON_THRES = 1e-3
+    val MAX_ITR = 30
+    val E_CON_THRES = 1e-4
     val K = 1000
     val Alpha = 1.0 / K
-    val EM_ITR = 20
-    val DATA = "/app/st/wise-tc/liuweiwei02/training.data"
+    val EM_ITR = 41
+    //val DATA = "/app/st/wise-tc/liuweiwei02/training.data"
+    val DATA = "/app/st/wise-tc/liuweiwei02/LDA_training_doc3/*"
     val PARTITION = 300
     //var beta_global = Array(Array(1.0f,2.0f),Array(1.0f,2.0f))
     
@@ -82,103 +83,117 @@ object ScalaLda{
         }
     }
     
+    def update_beta(input: Array[(Int, Array[Float])]) : Array[Array[Float]] = {
+        val ids = for (i <- 0 until input.length) yield { input(i)._1 }
+        var res = new Array[Array[Float]](ids.max + 1)
+        for (i <- 0 until input.length){
+            res(input(i)._1) = input(i)._2
+        }
+        return res
+    }
+    
     def main(args: Array[String]) {
         val conf = new SparkConf().setAppName("SparkLda")
         val sc = new SparkContext(conf)
         val text = sc.textFile(DATA).repartition(PARTITION).cache()
         var likelihood, likelihood_old = 0.0f
-        var beta_map = Array( (0,Array(1.0f,2.0f)), (1,Array(1.0f,2.0f)) ).toMap
+        var beta_arr = Array( Array(1.0f,2.0f), Array(1.0f,2.0f) )
         for (i<- 0 until EM_ITR){
-            var beta_global = sc.broadcast(beta_map)
+            var beta_global = sc.broadcast(beta_arr)
             def Expectation(line: String, itr_num: Int) : Array[(Int, Array[Float])] = {
                 val terms = line.trim.split(' ') 
-                    val real_terms = ArrayBuffer[String]()
-                    for(i <- 0 until terms.length){
-                        if (!terms(i).trim.isEmpty()){
-                            real_terms += terms(i).trim
-                        }
+                val real_terms = ArrayBuffer[String]()
+                for(i <- 0 until terms.length){
+                    if (!terms(i).trim.isEmpty()){
+                        real_terms += terms(i).trim
                     }
+                }
                 val N = real_terms.length
-                    if (N <= 0){
-                        return new Array[(Int, Array[Float])](0)
-                    }
+                if (N <= 0){
+                    return new Array[(Int, Array[Float])](0)
+                }
                 val word_ids = new Array[Int](N)
-                    val word_counts = new Array[Double](N)
-                    for(i <- 0 until N){
-                        val ele = real_terms(i).split(':')
-                            word_ids(i) = ele(0).toInt
-                            word_counts(i) = ele(1).toDouble * K // multipy K to bigger gamma for accuracy
-                    }
+                val word_counts = new Array[Double](N)
+                for(i <- 0 until N){
+                    val ele = real_terms(i).split(':')
+                        word_ids(i) = ele(0).toInt
+                        word_counts(i) = ele(1).toDouble * K // multipy K to bigger gamma for accuracy
+                }
                 val total_words = word_counts.sum
-                    val var_gamma = new Array[Double](K)
-                    val di_gamma = new Array[Double](K)
-                    for (i <- 0 until K){
-                        var_gamma(i) = Alpha + total_words / K
-                        di_gamma(i) = digamma(var_gamma(i))
-                    }
+                val var_gamma = new Array[Double](K)
+                val di_gamma = new Array[Double](K)
+                for (i <- 0 until K){
+                    var_gamma(i) = Alpha + total_words / K
+                    di_gamma(i) = digamma(var_gamma(i))
+                }
                 var beta : Map[Int, Array[Float]] = Map()
-                    if (itr_num > 0){
-                        for (n<- 0 until N){
-                            beta += (word_ids(n) -> beta_global.value( word_ids(n) ) )
-                                //beta += (word_ids(n) -> beta_global( word_ids(n) ) )
-                        }
-                    }
-                    else{
-                        var r = new Random()
-                            for (n<- 0 until N){
-                                var random_list = for (i <- 0 until K) yield {r.nextFloat()+0.1f}
-                                beta += (word_ids(n) -> random_list.toArray )
-                            }
-                    }
-                val phi = Array.ofDim[Double](N, K)
-                    var converged = 1.0
-                    var likelihood_old, likelihood = 0.0
-                    var i = 0
-                    while (i < MAX_ITR && converged > E_CON_THRES){
-                        for (n <- 0 until N){
-                            for (k <- 0 until K){
-                                phi(n)(k) = math.max( 1e-45 , math.exp(di_gamma(k))) * math.max( 1e-45, beta(word_ids(n))(k) )
-                            }
-                            val phi_sum = phi(n).sum
-                            for (k <- 0 until K){
-                                phi(n)(k) = phi(n)(k) / phi_sum
-                            }
-                        }
-                        for (k <- 0 until K){
-                            var temp = 0.0
-                            for (n <- 0 until N){
-                                temp = temp + word_counts(n) * phi(n)(k)
-                            }
-                            var_gamma(k) = Alpha + temp
-                            di_gamma(k) = digamma(var_gamma(k))
-                        }
-                        likelihood = compute_likelihood(word_ids, word_counts, beta, phi, var_gamma, di_gamma)
-                        converged = math.abs((likelihood_old - likelihood) / (likelihood_old + 1e-10))
-                        likelihood_old = likelihood
-                        i = i+1
-                    }
-
-                val res = new Array[(Int, Array[Float])](N)
+                var ITR_NUM = MAX_ITR
+                if (itr_num > 0){
                     for (n<- 0 until N){
-                        val temp = for(k<- 0 until  K) yield { math.max(1e-45f, phi(n)(k).toFloat) } 
-                        res(n) = (word_ids(n), temp.toArray)
+                        beta += (word_ids(n) -> beta_global.value( word_ids(n) ) )
+                        //beta += (word_ids(n) -> beta_global( word_ids(n) ) )
                     }
-                return res
+                 }
+                 else{
+                     ITR_NUM = 1
+                     var r = new Random()
+                         for (n<- 0 until N){
+                             var random_list = for (i <- 0 until K) yield {r.nextFloat()+0.1f}
+                             beta += (word_ids(n) -> random_list.toArray )
+                         }
+                 }
+                 val phi = Array.ofDim[Double](N, K)
+                 var converged = 1.0
+                 var likelihood_old, likelihood = 0.0
+                 var i = 0
+                 while (i < ITR_NUM && converged > E_CON_THRES){
+                     for (n <- 0 until N){
+                         for (k <- 0 until K){
+                             phi(n)(k) = math.max( 1e-45 , math.exp(di_gamma(k))) * math.max( 1e-45, beta(word_ids(n))(k) )
+                         }
+                         val phi_sum = phi(n).sum
+                         for (k <- 0 until K){
+                             phi(n)(k) = phi(n)(k) / phi_sum
+                         }
+                     }
+                     for (k <- 0 until K){
+                         var temp = 0.0
+                         for (n <- 0 until N){
+                             temp = temp + word_counts(n) * phi(n)(k)
+                         }
+                         var_gamma(k) = Alpha + temp
+                         di_gamma(k) = digamma(var_gamma(k))
+                     }
+                     likelihood = compute_likelihood(word_ids, word_counts, beta, phi, var_gamma, di_gamma)
+                     converged = math.abs((likelihood_old - likelihood) / (likelihood_old + 1e-10))
+                     likelihood_old = likelihood
+                     i = i+1
+                 }
+
+                 val res = new Array[(Int, Array[Float])](N)
+                 for (n<- 0 until N){
+                     val temp = for(k<- 0 until  K) yield { math.max(1e-45f, phi(n)(k).toFloat) } 
+                     res(n) = (word_ids(n), temp.toArray)
+                 }
+                 return res
             }
             var beta = text.flatMap(line => Expectation(line, i) ).reduceByKey(arr_add)
             beta.cache()
             val line_sum = beta.flatMap(line => for(i<- 0 until line._2.length) yield {(i, line._2(i))} ).reduceByKey((a,b) => a+b).collect()
             var line_sum2 = for (ele <- line_sum.sortWith(_._1<_._1)) yield {ele._2}
             val new_beta = beta.map(line => normalize(line, line_sum2))
-            beta_map = new_beta.collect().toMap
-            println("Iteration finished, ", i," length ..." ,beta_map.size)
-            if (i % 2 == 0){
+            val beta_result =  new_beta.collect() 
+            println("Iteration finished, ", i,"beta result length ..." ,beta_result.length)
+            beta_arr = update_beta( beta_result )
+            println("Generate new beta finished, ", i,"beta length ..." ,beta_arr.length)
+            beta_global.destroy()
+            if (i % 3 == 0 && i > 0){
                 val writer = new PrintWriter( new File("beta."+i.toString))
-                beta_map.foreach {x=>{
-                    var (k, v) = x
-                    writer.write(k.toString + ' ')
-                    v.foreach{ y => {writer.write(y.toString + ' ')}}
-                    writer.write('\n')
+                for( line_i <- 0 until beta_arr.length) {
+                    if (beta_arr(line_i) != null && beta_arr(line_i).length == K ){
+                        writer.write(line_i.toString + ' ')
+                        beta_arr(line_i).foreach{ y => {writer.write(y.toString + ' ')}}
+                        writer.write('\n')
                     }
                 }
                 writer.close()
