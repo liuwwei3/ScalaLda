@@ -13,8 +13,8 @@ object ScalaLda{
     val E_CON_THRES = 1e-4
     val K = 1000
     val Alpha = 1.0 / K
-    val EM_ITR = 41
-    //val DATA = "/app/st/wise-tc/liuweiwei02/training.data"
+    val EM_ITR = 40
+    //val DATA = "/app/st/wise-tc/liuweiwei02/data1"
     val DATA = "/app/st/wise-tc/liuweiwei02/LDA_training_doc3/*"
     val PARTITION = 300
     //var beta_global = Array(Array(1.0f,2.0f),Array(1.0f,2.0f))
@@ -100,6 +100,7 @@ object ScalaLda{
         var beta_arr = Array( Array(1.0f,2.0f), Array(1.0f,2.0f) )
         for (i<- 0 until EM_ITR){
             var beta_global = sc.broadcast(beta_arr)
+            println("broadcast success, id:", beta_global.id)
             def Expectation(line: String, itr_num: Int) : Array[(Int, Array[Float])] = {
                 val terms = line.trim.split(' ') 
                 val real_terms = ArrayBuffer[String]()
@@ -186,7 +187,14 @@ object ScalaLda{
             println("Iteration finished, ", i,"beta result length ..." ,beta_result.length)
             beta_arr = update_beta( beta_result )
             println("Generate new beta finished, ", i,"beta length ..." ,beta_arr.length)
-            beta_global.destroy()
+            try{beta.unpersist(false)}catch{ case e : Exception =>{println("Exception while unpersisting beta"+i.toString)}}
+            try{
+                beta_global.destroy()
+            }catch{
+                case e : Exception => {
+                    println("Exception while destroying beta_global, i = " + i.toString)
+                }
+            }
             if (i % 3 == 0 && i > 0){
                 val writer = new PrintWriter( new File("beta."+i.toString))
                 for( line_i <- 0 until beta_arr.length) {
