@@ -2,6 +2,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
 import org.apache.spark.SparkConf
 import scala.util.Random
+import scala.io.Source
 import scala.collection.mutable.ArrayBuffer
 import java.io._
 
@@ -10,9 +11,9 @@ object ScalaLda{
 
     //configs
     val MAX_ITR = 30
-    val E_CON_THRES = 1e-4
+    val E_CON_THRES = 1e-6
     val K = 1000
-    val Alpha = 1.0 / K
+    val Alpha = 3.0 / K
     val EM_ITR = 40
     //val DATA = "/app/st/wise-tc/liuweiwei02/data1"
     val DATA = "/app/st/wise-tc/liuweiwei02/LDA_training_doc3/*"
@@ -92,13 +93,30 @@ object ScalaLda{
         return res
     }
     
+    def init_beta(args: Array[String]): (Int, Array[Array[Float]]) = {
+        if (args.length != 3){
+            return (0, Array( Array(1.0f,2.0f), Array(1.0f,2.0f) ) )
+        }
+        val start = args(0).toInt
+        var res = new Array[Array[Float]](args(2).toInt + 1)
+        for (line <- Source.fromFile(args(1)).getLines ){
+            val temp = line.trim().split(" ")
+            if (temp.length == K+1){
+                val temp2 = for(k <- 0 until K) yield {temp(k+1).toFloat}
+                res(temp(0).toInt) = temp2.toArray
+            }
+        }
+        return (start, res)
+    }
+    
     def main(args: Array[String]) {
         val conf = new SparkConf().setAppName("SparkLda")
         val sc = new SparkContext(conf)
         val text = sc.textFile(DATA).repartition(PARTITION).cache()
         var likelihood, likelihood_old = 0.0f
-        var beta_arr = Array( Array(1.0f,2.0f), Array(1.0f,2.0f) )
-        for (i<- 0 until EM_ITR){
+        //var beta_arr = Array( Array(1.0f,2.0f), Array(1.0f,2.0f) )
+        var (start, beta_arr )= init_beta(args)
+        for (i<- start until EM_ITR){
             var beta_global = sc.broadcast(beta_arr)
             println("broadcast success, id:", beta_global.id)
             def Expectation(line: String, itr_num: Int) : Array[(Int, Array[Float])] = {
@@ -195,7 +213,7 @@ object ScalaLda{
                     println("Exception while destroying beta_global, i = " + i.toString)
                 }
             }
-            if (i % 3 == 0 && i > 0){
+            if (i % 3 == 0 ){
                 val writer = new PrintWriter( new File("beta."+i.toString))
                 for( line_i <- 0 until beta_arr.length) {
                     if (beta_arr(line_i) != null && beta_arr(line_i).length == K ){
