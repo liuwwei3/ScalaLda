@@ -12,11 +12,11 @@ object ScalaLda{
     //configs
     val MAX_ITR = 30
     val E_CON_THRES = 1e-6
-    val K = 1000
+    val K = 2
     val Alpha = 3.0 / K
     val EM_ITR = 40
-    //val DATA = "/app/st/wise-tc/liuweiwei02/data1"
-    val DATA = "/app/st/wise-tc/liuweiwei02/LDA_training_doc3/*"
+    val DATA = "/app/st/wise-tc/liuweiwei02/data1"
+    //val DATA = "/app/st/wise-tc/liuweiwei02/LDA_training_doc3/*"
     val PARTITION = 300
     //var beta_global = Array(Array(1.0f,2.0f),Array(1.0f,2.0f))
     
@@ -49,6 +49,18 @@ object ScalaLda{
             }
         }
         return res
+    }
+
+    def normal_line(line :(Int, Array[Float])) : (Int, Array[Float]) = {
+        val res = new Array[Float]( K )
+        var sum = 0.0f
+        for (i <- 0 until K){
+            sum = sum + line._2(i)
+        }
+        for (i <- 0 until K){
+            res(i) = line._2(i) / sum
+        }
+        return (line._1, res)
     }
 
     def normalize(line: (Int, Array[Float]), line_sum: Array[Float]): (Int, Array[Float]) = {
@@ -107,6 +119,21 @@ object ScalaLda{
             }
         }
         return (start, res)
+    }
+
+    def save_model(i: Int, beta_arr: Array[Array[Float]]){
+        val out = new DataOutputStream(  new BufferedOutputStream(new FileOutputStream("beta."+i.toString)))
+        out.writeInt(K)
+        for (line <- beta_arr){
+            if (line!=null){
+                for (i <- 0 until line.length){
+                    if (i >= 0){
+                        out.writeFloat(line(i))
+                    }
+                }
+            }
+        }
+        out.close()
     }
     
     def main(args: Array[String]) {
@@ -196,7 +223,7 @@ object ScalaLda{
                  }
                  return res
             }
-            var beta = text.flatMap(line => Expectation(line, i) ).reduceByKey(arr_add)
+            var beta = text.flatMap(line => Expectation(line, i) ).reduceByKey(arr_add).map(line => normal_line(line) )
             beta.cache()
             val line_sum = beta.flatMap(line => for(i<- 0 until line._2.length) yield {(i, line._2(i))} ).reduceByKey((a,b) => a+b).collect()
             var line_sum2 = for (ele <- line_sum.sortWith(_._1<_._1)) yield {ele._2}
@@ -213,20 +240,8 @@ object ScalaLda{
                     println("Exception while destroying beta_global, i = " + i.toString)
                 }
             }
-            if (i % 3 == 0 ){
-                val writer = new PrintWriter( new File("beta."+i.toString))
-                for( line_i <- 0 until beta_arr.length) {
-                    if (beta_arr(line_i) != null && beta_arr(line_i).length == K ){
-                        writer.write(line_i.toString + ' ')
-                        beta_arr(line_i).foreach{ y => {writer.write(y.toString + ' ')}}
-                        writer.write('\n')
-                    }
-                }
-                writer.close()
-            }
-            //line_sum2.foreach {x => {print(x)}}
-            //val beta_arr = for (ele <- beta_map.toArray.sortWith(_._1<_._1)) yield {ele._2}
-            //print_beta(beta_arr)
+
+            save_model(i, beta_arr)
         }
     }
 
