@@ -122,7 +122,7 @@ object ScalaLda{
     }
 
     def save_model(i: Int, beta_arr: Array[Array[Float]]){
-        val out = new DataOutputStream(  new BufferedOutputStream(new FileOutputStream("beta."+i.toString)))
+        val out = new DataOutputStream(  new BufferedOutputStream(new FileOutputStream("beta."+ (i%3).toString)))
         out.writeInt(K)
         for (line <- beta_arr){
             if (line!=null){
