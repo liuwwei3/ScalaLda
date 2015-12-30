@@ -1,13 +1,19 @@
 #### HOW TO USE
 
-1. °²×°sbt, sbt¹ÙÍø£ºhttp://www.scala-sbt.org/
+1. å®‰è£…sbt, sbtå®˜ç½‘ï¼šhttp://www.scala-sbt.org/
 
-2. °²×°ÍêÖ®ºóÊ×ÏÈÔÚ´ÎÄ¿Â¼ÏÂÔËÐÐ£¬ÓÃÀ´ÏÂÔØ¸÷ÖÖjar
+2. å®‰è£…å®Œä¹‹åŽé¦–å…ˆåœ¨æ¬¡ç›®å½•ä¸‹è¿è¡Œï¼Œç”¨æ¥ä¸‹è½½å„ç§jar
 ```
 sbt
 ```
 
-3. ÏÂÔØÍêÖ®ºóÔËÐÐ±àÒëlda
+3. ä¸‹è½½å®Œä¹‹åŽç¼–è¯‘lda
 ```
 sbt package
+```
+
+4. è¿è¡ŒLDAï¼š
+
+```
+spark-submit --class ScalaLda target/scala-2.10/scalalda_2.10-1.0.jar
 ```
